@@ -4,12 +4,19 @@ from google_auth_oauthlib.flow import Flow
 from googleapiclient.discovery import build
 import json
 import os
+from dotenv import load_dotenv
+
 
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
 
-CLIENT_SECRET_FILE = r'D:\gapsmith\google_analytics\client_secret1.json'
+
+
+load_dotenv()
+
+
+CLIENT_SECRET_FILE = os.getenv('CLIENT_SECRET_FILE')
 REDIRECT_URI = 'https://localhost:5000/callback'
 SCOPES = ['https://www.googleapis.com/auth/analytics.readonly']
 
@@ -20,8 +27,8 @@ flow = Flow.from_client_secrets_file(
     redirect_uri=REDIRECT_URI
 )
 
-# Path to store customer credentials
-CUSTOMER_CREDENTIALS_FILE = r'D:\gapsmith\google_analytics\customer_credentials.json'
+
+CUSTOMER_CREDENTIALS_FILE = os.getenv('CUSTOMER_CREDENTIALS_FILE')
 
 @app.route('/')
 def index():
@@ -212,8 +219,7 @@ def logout():
     return redirect(url_for('index'))
 
 def clear_customer_credentials():
-    customer_credentials_file = r'D:\gapsmith\google_analytics\customer_credentials.json'
-    
+    customer_credentials_file = os.getenv('CUSTOMER_CREDENTIALS_FILE')
     
     with open(customer_credentials_file, 'w') as f:
         json.dump({}, f)
