@@ -1,0 +1,20 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Select View</title>
+</head>
+<body>
+    <h1>Select Google Analytics View</h1>
+    <form action="{{ url_for('fetch_data') }}" method="post">
+        <label for="view_id">View:</label>
+        <select id="view_id" name="view_id">
+            {% for view in views %}
+                <option value="{{ view.id }}">{{ view.name }}</option>
+            {% endfor %}
+        </select>
+        <button type="submit">Fetch Data</button>
+    </form>
+</body>
+</html>
