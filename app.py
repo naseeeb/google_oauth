@@ -1,7 +1,11 @@
 from flask import Flask, redirect, url_for, session, request, render_template
 from google.oauth2.credentials import Credentials
 from google_auth_oauthlib.flow import Flow
-from googleapiclient.discovery import build
+from google.analytics.admin import AnalyticsAdminServiceClient
+from google.analytics.admin_v1alpha.types import ListAccountSummariesRequest
+from google.analytics.data_v1beta import BetaAnalyticsDataClient
+from google.analytics.data_v1beta.types import RunReportRequest
+
 import json
 import os
 from dotenv import load_dotenv
@@ -10,23 +14,18 @@ from dotenv import load_dotenv
 app = Flask(__name__)
 app.secret_key = os.urandom(24)
 
-
-
-
+# Load environment variables from .env file
 load_dotenv()
-
 
 CLIENT_SECRET_FILE = os.getenv('CLIENT_SECRET_FILE')
 REDIRECT_URI = 'https://localhost:5000/callback'
 SCOPES = ['https://www.googleapis.com/auth/analytics.readonly']
-
 
 flow = Flow.from_client_secrets_file(
     CLIENT_SECRET_FILE,
     scopes=SCOPES,
     redirect_uri=REDIRECT_URI
 )
-
 
 CUSTOMER_CREDENTIALS_FILE = os.getenv('CUSTOMER_CREDENTIALS_FILE')
 
@@ -45,66 +44,43 @@ def customer_login():
 
 @app.route('/callback')
 def callback():
-    print(f"Session state: {session.get('state')}")  
-    print(f"Request state: {request.args.get('state')}")  
+    print(f"Session state: {session.get('state')}")
+    print(f"Request state: {request.args.get('state')}")
 
     try:
         flow.fetch_token(authorization_response=request.url)
 
         if session.get('state') != request.args.get('state'):
-            print("State mismatch!")  
+            print("State mismatch!")
             return redirect(url_for('index'))
 
         credentials = flow.credentials
         session['credentials'] = credentials_to_dict(credentials)
 
-        if session.get('customer_email'):
-            save_customer_credentials(session['customer_email'], credentials_to_dict(credentials))
-            session.pop('customer_email', None)
-            return redirect(url_for('owner_view'))
+        properties = get_analytics_properties(credentials)
+        if not properties:
+            return "No Google Analytics properties found for this user.", 404
 
-        views = get_analytics_views(credentials)
-        if not views:
-            accounts_exist = check_google_analytics_accounts_exist(credentials)
-            if accounts_exist:
-                return "No Google Analytics web properties found for this user.", 403
-            else:
-                return "No Google Analytics accounts found for this user.", 404
+        session['properties'] = properties
 
-        return render_template('select_view.html', views=views)
+        return redirect(url_for('select_property'))
 
     except Exception as e:
         print(f"Error in callback: {e}")
         return f"An error occurred during the callback: {str(e)}", 500
 
-@app.route('/owner_request')
-def owner_request():
-    return render_template('owner_request.html')
+@app.route('/select_property')
+def select_property():
+    properties = session.get('properties')
+    if not properties:
+        return "No properties available", 400
 
-@app.route('/request_customer_data', methods=['POST'])
-def request_customer_data():
-    customer_email = request.form['customer_email']
-    print(f"Customer email: {customer_email}")  
-    session['customer_email'] = customer_email
+    return render_template('select_property.html', properties=properties)
 
-    authorization_url, state = flow.authorization_url(
-        access_type='offline',
-        include_granted_scopes='true',
-        login_hint=customer_email  
-    )
-    print(f"Authorization URL: {authorization_url}")  
-    session['state'] = state
-    return redirect(authorization_url)
-
-@app.route('/owner_view')
-def owner_view():
-    customers = load_customer_credentials()
-    return render_template('owner_view.html', customers=customers)
-
-@app.route('/fetch_customer_data', methods=['POST'])
-def fetch_customer_data():
-    customer_id = request.form['customer_id']
-    credentials_dict = load_customer_credentials().get(customer_id)
+@app.route('/fetch_data_from_property', methods=['POST'])
+def fetch_data_from_property():
+    property_id = request.form['property_id']
+    credentials_dict = session.get('credentials')
     credentials = Credentials(
         token=credentials_dict['token'],
         refresh_token=credentials_dict['refresh_token'],
@@ -114,10 +90,14 @@ def fetch_customer_data():
         scopes=credentials_dict['scopes']
     )
 
-    view_id = request.form['view_id']
-    analytics_data = fetch_google_analytics_data(credentials, view_id)
+    analytics_data = fetch_google_analytics_data(credentials, property_id)
+    print(f"Fetched Analytics Data: {analytics_data}")  # Debugging output
+
+    if not analytics_data:
+        return "No data found for the selected property.", 404
 
     return render_template('analytics.html', data=analytics_data)
+
 
 def save_customer_credentials(customer_email, credentials_dict):
     try:
@@ -131,13 +111,13 @@ def save_customer_credentials(customer_email, credentials_dict):
     with open(CUSTOMER_CREDENTIALS_FILE, 'w') as f:
         json.dump(customer_credentials, f)
 
-    print(f"Saved credentials for {customer_email}: {credentials_dict}")  
+    print(f"Saved credentials for {customer_email}: {credentials_dict}")
 
 def load_customer_credentials():
     try:
         with open(CUSTOMER_CREDENTIALS_FILE, 'r') as f:
             credentials = json.load(f)
-            print(f"Loaded customer credentials: {credentials}")  
+            print(f"Loaded customer credentials: {credentials}")
             return credentials
     except FileNotFoundError:
         return {}
@@ -152,61 +132,49 @@ def credentials_to_dict(credentials):
         'scopes': credentials.scopes
     }
 
-def get_analytics_views(credentials):
-    service = build('analytics', 'v3', credentials=credentials)
-
+def get_analytics_properties(credentials):
     try:
-        accounts = service.management().accounts().list().execute()
-        if not accounts.get('items'):
-            return []
-        account_id = accounts['items'][0]['id']
+        client = AnalyticsAdminServiceClient(credentials=credentials)
+        request = ListAccountSummariesRequest()
+        response = client.list_account_summaries(request)
 
-        properties = service.management().webproperties().list(accountId=account_id).execute()
-        if not properties.get('items'):
-            return []
-        property_id = properties['items'][0]['id']
+        properties = []
+        for account in response.account_summaries:
+            for property in account.property_summaries:
+                properties.append({
+                    'property_id': property.property,
+                    'property_name': property.display_name
+                })
+        
+        print("Collected properties:")
+        for prop in properties:
+            print(prop)
 
-        profiles = service.management().profiles().list(
-            accountId=account_id,
-            webPropertyId=property_id
-        ).execute()
-
-        return profiles['items']
+        return properties
     except Exception as e:
-        print(f"Error fetching Google Analytics views: {e}")
+        print(f"Error fetching Google Analytics properties: {e}")
         return []
 
-def check_google_analytics_accounts_exist(credentials):
-    service = build('analytics', 'v3', credentials=credentials)
-
+def fetch_google_analytics_data(credentials, property_id):
     try:
-        accounts = service.management().accounts().list().execute()
-        return bool(accounts.get('items'))
-    except Exception as e:
-        print(f"Error checking Google Analytics accounts: {e}")
-        return False
-
-def fetch_google_analytics_data(credentials, view_id):
-    creds = Credentials(
-        token=credentials.token,
-        refresh_token=credentials.refresh_token,
-        token_uri=credentials.token_uri,
-        client_id=credentials.client_id,
-        client_secret=credentials.client_secret,
-        scopes=credentials.scopes
-    )
-
-    service = build('analytics', 'v3', credentials=creds)
-
-    try:
-        results = service.data().ga().get(
-            ids=f'ga:{view_id}',
-            start_date='7daysAgo',
-            end_date='today',
-            metrics='ga:sessions'
-        ).execute()
-
-        data = results.get('rows', [])
+        client = BetaAnalyticsDataClient(credentials=credentials)
+        
+        request = RunReportRequest(
+            property='{property_id}',
+            dimensions=[{'name': 'date'}],
+            metrics=[{'name': 'activeUsers'}],
+            date_ranges=[{'start_date': '7daysAgo', 'end_date': 'today'}]
+        )
+        
+        response = client.run_report(request)
+        
+        data = []
+        for row in response.rows:
+            data.append({
+                'date': row.dimension_values[0].value,
+                'active_users': row.metric_values[0].value
+            })
+        
         return data
     except Exception as e:
         print(f"Error fetching Google Analytics data: {e}")

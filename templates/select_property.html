@@ -3,15 +3,14 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Select View</title>
+    <title>Select Property</title>
 </head>
 <body>
-    <form action="{{ url_for('fetch_data_from_selected_view') }}" method="POST">
+    <h1>Select a Google Analytics Property</h1>
+    <form action="{{ url_for('fetch_data_from_property') }}" method="POST">
         <select name="property_id">
             {% for property in properties %}
-                <option value="{{ property.property_id }}">
-                    {{ property.property_name }}
-                </option>
+                <option value="{{ property.property_id }}">{{ property.property_name }}</option>
             {% endfor %}
         </select>
         <button type="submit">Fetch Data</button>

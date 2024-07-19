@@ -1,3 +1,4 @@
+<!-- analytics.html -->
 <!DOCTYPE html>
 <html lang="en">
 <head>
@@ -6,21 +7,26 @@
     <title>Analytics Data</title>
 </head>
 <body>
-    <h1>Google Analytics Data</h1>
-    <table>
-        <thead>
-            <tr>
-                <th>Sessions</th>
-            </tr>
-        </thead>
-        <tbody>
-            {% for row in data %}
+    <h1>Analytics Data</h1>
+    {% if data %}
+        <table>
+            <thead>
                 <tr>
-                    <td>{{ row[0] }}</td>
+                    <th>Date</th>
+                    <th>Active Users</th>
                 </tr>
-            {% endfor %}
-        </tbody>
-    </table>
-    <a href="{{ url_for('logout') }}">Logout</a>
+            </thead>
+            <tbody>
+                {% for item in data %}
+                    <tr>
+                        <td>{{ item.date }}</td>
+                        <td>{{ item.active_users }}</td>
+                    </tr>
+                {% endfor %}
+            </tbody>
+        </table>
+    {% else %}
+        <p>No data available.</p>
+    {% endif %}
 </body>
 </html>

@@ -3,23 +3,32 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Owner View Customer Data</title>
+    <title>Owner View</title>
 </head>
 <body>
-    <h1>Owner View Customer Data</h1>
-    <form action="{{ url_for('fetch_customer_data') }}" method="post">
-        <label for="customer_id">Select Customer:</label>
-        <select id="customer_id" name="customer_id">
-            {% for customer_email, creds in customers.items() %}
-                <option value="{{ customer_email }}">{{ customer_email }}</option>
+    <h1>Customer Data</h1>
+    <table border="1">
+        <thead>
+            <tr>
+                <th>Customer Email</th>
+                <th>Actions</th>
+            </tr>
+        </thead>
+        <tbody>
+            {% for customer_email, credentials in customers.items() %}
+                <tr>
+                    <td>{{ customer_email }}</td>
+                    <td>
+                        <form action="{{ url_for('fetch_customer_data') }}" method="post">
+                            <input type="hidden" name="customer_id" value="{{ customer_email }}">
+                            <label for="view_id">View ID:</label>
+                            <input type="text" id="view_id" name="view_id" required>
+                            <button type="submit">Fetch Data</button>
+                        </form>
+                    </td>
+                </tr>
             {% endfor %}
-        </select>
-        <br><br>
-        <label for="view_id">Enter View ID:</label>
-        <input type="text" id="view_id" name="view_id" required>
-        <br><br>
-        <button type="submit">Fetch Data</button>
-    </form>
-    <a href="{{ url_for('logout') }}">Logout</a>
+        </tbody>
+    </table>
 </body>
 </html>
